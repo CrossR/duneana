@@ -78,8 +78,17 @@ public:
   bool processMCParticles(art::Event const& e);
   bool parsePFParticles(art::Event const& e);
 
+  // Pull out track specific information
   void parseTrack(art::Event const& e, const art::Ptr<recob::PFParticle> &pfp, int iPfp);
+
+  // Pull out shower specific information
   void parseShower(art::Event const& e, const art::Ptr<recob::PFParticle> &pfp, int iPfp);
+
+  // Find and store the index of the main MC for each reco PFP
+  void findRecoMCMatchPositions(art::Event const& e, const art::Ptr<recob::PFParticle> &pfp, int iPfp);
+
+  // Calculate / Find reco MC information, such as completeness and purity, as
+  // well as reco->mc info such as energy, number of MC hits and more.
   void recoMCInfo(art::Event const& e, const art::Ptr<recob::PFParticle> &pfp, int iPfp);
 
   void reset(bool deepClean = false);
@@ -241,7 +250,7 @@ test::refactoredPandoraAna::refactoredPandoraAna(fhicl::ParameterSet const& p)
 
 float test::refactoredPandoraAna::getCompleteness(std::vector<art::Ptr<recob::Hit>> const &hits, int const &trackID, int view) {
 
-  std::map<int,int> objectHitsMap;
+  std::map<int, int> objectHitsMap;
 
   for (unsigned int i = 0; i < hits.size(); ++i) {
     int primaryID = TruthMatchUtils::TrueParticleID(fClockData, hits[i], true);
@@ -250,7 +259,7 @@ float test::refactoredPandoraAna::getCompleteness(std::vector<art::Ptr<recob::Hi
 
   int baseNumOfHits = fMCParticleNHits[fPFPTrueParticleMatchedPosition[trackID]];
 
-  if (view != -1)
+  if (view != -1 && view <= kNViews)
     baseNumOfHits = fMCParticleNHitsView[fPFPTrueParticleMatchedPosition[trackID]][0];
 
   return (baseNumOfHits == 999999) ? 999999 : objectHitsMap[trackID] / static_cast<float>(baseNumOfHits);
@@ -258,7 +267,7 @@ float test::refactoredPandoraAna::getCompleteness(std::vector<art::Ptr<recob::Hi
 
 float test::refactoredPandoraAna::getPurity(std::vector<art::Ptr<recob::Hit>> const &hits, int const &trackID, int view) {
 
-  std::map<int,int> objectHitsMap;
+  std::map<int, int> objectHitsMap;
 
   for (unsigned int i = 0; i < hits.size(); ++i) {
     int primaryID = TruthMatchUtils::TrueParticleID(fClockData, hits[i], true);
@@ -281,9 +290,9 @@ bool test::refactoredPandoraAna::processMCTruth(art::Event const& e) {
       continue;
 
     fNuPdgCodeTruth = truth->GetNeutrino().Nu().PdgCode();
-    fNuCCNCTruth = truth->GetNeutrino().CCNC();
-    fNuModeTruth = truth->GetNeutrino().Mode();
-    fNuETruth = truth->GetNeutrino().Nu().E();
+    fNuCCNCTruth    = truth->GetNeutrino().CCNC();
+    fNuModeTruth    = truth->GetNeutrino().Mode();
+    fNuETruth       = truth->GetNeutrino().Nu().E();
     fNuVertexXTruth = truth->GetNeutrino().Nu().Vx();
     fNuVertexYTruth = truth->GetNeutrino().Nu().Vy();
     fNuVertexZTruth = truth->GetNeutrino().Nu().Vz();
@@ -307,12 +316,12 @@ bool test::refactoredPandoraAna::processMCParticles(art::Event const& e) {
 
   // Get all hits.
   art::Handle<std::vector<recob::Hit>> hitHandle;
-  std::vector<art::Ptr<recob::Hit> > allHits;
+  std::vector<art::Ptr<recob::Hit>> allHits;
   if (e.getByLabel(fHitLabel, hitHandle))
     art::fill_ptr_vector(allHits, hitHandle);
 
   // Fill MC particle to hits map.
-  std::map<int,int> trueParticleHits, trueParticleHitsView0, trueParticleHitsView1, trueParticleHitsView2;
+  std::map<int, int> trueParticleHits, trueParticleHitsView0, trueParticleHitsView1, trueParticleHitsView2;
   for (const auto& hit: allHits) {
       TruthMatchUtils::G4ID g4ID(TruthMatchUtils::TrueParticleID(fClockData, hit, fRollUpUnsavedIDs));
 
@@ -340,7 +349,7 @@ bool test::refactoredPandoraAna::processMCParticles(art::Event const& e) {
     const simb::MCParticle trueParticle = mcParticles->at(iMc);
 
     bool isMCPrimary(false);
-    trueParticle.Process() == "primary" ? isMCPrimary=true : isMCPrimary=false;
+    trueParticle.Process() == "primary" ? isMCPrimary = true : isMCPrimary = false;
     fMCIsPrimary[iMc] = isMCPrimary;
 
     fMCParticleTrueEnergy[iMc]       = trueParticle.E();
@@ -377,55 +386,33 @@ bool test::refactoredPandoraAna::processMCParticles(art::Event const& e) {
   return true;
 }
 
-void test::refactoredPandoraAna::parseTrack(art::Event const& e, const art::Ptr<recob::PFParticle> &pfp, int iPfp) {
-
-  fPFPIsTrack[iPfp] = true;
-  art::Ptr<recob::Track> track = dune_ana::DUNEAnaPFParticleUtils::GetTrack(pfp, e, fPFParticleLabel, fTrackLabel);
-
-  fPFPTrackID[iPfp]               = track->ID();
-  fPFPTrackLength[iPfp]           = track->Length();
-  fPFPTrackStartX[iPfp]           = track->Start().X();
-  fPFPTrackStartY[iPfp]           = track->Start().Y();
-  fPFPTrackStartZ[iPfp]           = track->Start().Z();
-  fPFPTrackVertexX[iPfp]          = track->Vertex().X();
-  fPFPTrackVertexY[iPfp]          = track->Vertex().Y();
-  fPFPTrackVertexZ[iPfp]          = track->Vertex().Z();
-  fPFPTrackEndX[iPfp]             = track->End().X();
-  fPFPTrackEndY[iPfp]             = track->End().Y();
-  fPFPTrackEndZ[iPfp]             = track->End().Z();
-  fPFPTrackTheta[iPfp]            = track->Theta();
-  fPFPTrackPhi[iPfp]              = track->Phi();
-  fPFPTrackZenithAngle[iPfp]      = track->ZenithAngle();
-  fPFPTrackAzimuthAngle[iPfp]     = track->AzimuthAngle();
-  fPFPTrackStartDirectionX[iPfp]  = track->StartDirection().X();
-  fPFPTrackStartDirectionY[iPfp]  = track->StartDirection().Y();
-  fPFPTrackStartDirectionZ[iPfp]  = track->StartDirection().Z();
-  fPFPTrackVertexDirectionX[iPfp] = track->VertexDirection().X();
-  fPFPTrackVertexDirectionY[iPfp] = track->VertexDirection().Y();
-  fPFPTrackVertexDirectionZ[iPfp] = track->VertexDirection().Z();
-  fPFPTrackEndDirectionX[iPfp]    = track->EndDirection().X();
-  fPFPTrackEndDirectionY[iPfp]    = track->EndDirection().Y();
-  fPFPTrackEndDirectionZ[iPfp]    = track->EndDirection().Z();
-  fPFPTrackChi2[iPfp]             = track->Chi2();
-  fPFPTrackNdof[iPfp]             = track->Ndof();
+void test::refactoredPandoraAna::findRecoMCMatchPositions(art::Event const& e, const art::Ptr<recob::PFParticle> &pfp, int iPfp) {
 
   std::vector<art::Ptr<recob::Hit>> pfpHits;
-  pfpHits = dune_ana::DUNEAnaTrackUtils::GetHits(track, e, fTrackLabel);
+
+  if (fPFPIsTrack[iPfp]) {
+    art::Ptr<recob::Track> track = dune_ana::DUNEAnaPFParticleUtils::GetTrack(pfp, e, fPFParticleLabel, fTrackLabel);
+    pfpHits = dune_ana::DUNEAnaTrackUtils::GetHits(track, e, fTrackLabel);
+  } else if (fPFPIsShower[iPfp]) {
+    art::Ptr<recob::Shower> shower = dune_ana::DUNEAnaPFParticleUtils::GetShower(pfp, e, fPFParticleLabel, fShowerLabel);
+    pfpHits = dune_ana::DUNEAnaShowerUtils::GetHits(shower, e, fShowerLabel);
+  }
+
   fPFPNHits[iPfp] = pfpHits.size();
 
-  std::vector<art::Ptr<recob::Hit> > pfpHitsView0 = dune_ana::DUNEAnaPFParticleUtils::GetViewHits(pfp, e, fPFParticleLabel, 0);
+  std::vector<art::Ptr<recob::Hit>> pfpHitsView0 = dune_ana::DUNEAnaPFParticleUtils::GetViewHits(pfp, e, fPFParticleLabel, 0);
   fPFPNHitsView[iPfp][0] = pfpHitsView0.size();
 
-  std::vector<art::Ptr<recob::Hit> > pfpHitsView1 = dune_ana::DUNEAnaPFParticleUtils::GetViewHits(pfp, e, fPFParticleLabel, 1);
+  std::vector<art::Ptr<recob::Hit>> pfpHitsView1 = dune_ana::DUNEAnaPFParticleUtils::GetViewHits(pfp, e, fPFParticleLabel, 1);
   fPFPNHitsView[iPfp][1] = pfpHitsView1.size();
 
-  std::vector<art::Ptr<recob::Hit> > pfpHitsView2 = dune_ana::DUNEAnaPFParticleUtils::GetViewHits(pfp, e, fPFParticleLabel, 2);
+  std::vector<art::Ptr<recob::Hit>> pfpHitsView2 = dune_ana::DUNEAnaPFParticleUtils::GetViewHits(pfp, e, fPFParticleLabel, 2);
   fPFPNHitsView[iPfp][2] = pfpHitsView2.size();
 
   if (e.isRealData())
     return;
 
-  // Get total hit matching stats...
+  // Find the MC match for this particle and store it
   TruthMatchUtils::G4ID g4ID(TruthMatchUtils::TrueParticleIDFromTotalRecoHits(fClockData, pfpHits, fRollUpUnsavedIDs));
   if (TruthMatchUtils::Valid(g4ID)) {
     fPFPTrueParticleMatchedID[iPfp] = g4ID;
@@ -483,8 +470,46 @@ void test::refactoredPandoraAna::parseTrack(art::Event const& e, const art::Ptr<
   return;
 }
 
+void test::refactoredPandoraAna::parseTrack(art::Event const& e, const art::Ptr<recob::PFParticle> &pfp, int iPfp) {
+
+  fPFPIsTrack[iPfp] = true;
+  fPFPIsShower[iPfp] = false;
+  art::Ptr<recob::Track> track = dune_ana::DUNEAnaPFParticleUtils::GetTrack(pfp, e, fPFParticleLabel, fTrackLabel);
+
+  fPFPTrackID[iPfp]               = track->ID();
+  fPFPTrackLength[iPfp]           = track->Length();
+  fPFPTrackStartX[iPfp]           = track->Start().X();
+  fPFPTrackStartY[iPfp]           = track->Start().Y();
+  fPFPTrackStartZ[iPfp]           = track->Start().Z();
+  fPFPTrackVertexX[iPfp]          = track->Vertex().X();
+  fPFPTrackVertexY[iPfp]          = track->Vertex().Y();
+  fPFPTrackVertexZ[iPfp]          = track->Vertex().Z();
+  fPFPTrackEndX[iPfp]             = track->End().X();
+  fPFPTrackEndY[iPfp]             = track->End().Y();
+  fPFPTrackEndZ[iPfp]             = track->End().Z();
+  fPFPTrackTheta[iPfp]            = track->Theta();
+  fPFPTrackPhi[iPfp]              = track->Phi();
+  fPFPTrackZenithAngle[iPfp]      = track->ZenithAngle();
+  fPFPTrackAzimuthAngle[iPfp]     = track->AzimuthAngle();
+  fPFPTrackStartDirectionX[iPfp]  = track->StartDirection().X();
+  fPFPTrackStartDirectionY[iPfp]  = track->StartDirection().Y();
+  fPFPTrackStartDirectionZ[iPfp]  = track->StartDirection().Z();
+  fPFPTrackVertexDirectionX[iPfp] = track->VertexDirection().X();
+  fPFPTrackVertexDirectionY[iPfp] = track->VertexDirection().Y();
+  fPFPTrackVertexDirectionZ[iPfp] = track->VertexDirection().Z();
+  fPFPTrackEndDirectionX[iPfp]    = track->EndDirection().X();
+  fPFPTrackEndDirectionY[iPfp]    = track->EndDirection().Y();
+  fPFPTrackEndDirectionZ[iPfp]    = track->EndDirection().Z();
+  fPFPTrackChi2[iPfp]             = track->Chi2();
+  fPFPTrackNdof[iPfp]             = track->Ndof();
+
+  return;
+}
+
 void test::refactoredPandoraAna::parseShower(art::Event const& e, const art::Ptr<recob::PFParticle> &pfp, int iPfp) {
+
   fPFPIsShower[iPfp] = true;
+  fPFPIsTrack[iPfp] = false;
   art::Ptr<recob::Shower> shower = dune_ana::DUNEAnaPFParticleUtils::GetShower(pfp, e, fPFParticleLabel, fShowerLabel);
 
   fPFPShowerID[iPfp]            =      shower->ID();
@@ -503,74 +528,6 @@ void test::refactoredPandoraAna::parseShower(art::Event const& e, const art::Ptr
   fPFPShowerStartErrZ[iPfp]     =      shower->ShowerStartErr().Z();
   fPFPShowerLength[iPfp]        =      shower->Length();
   fPFPShowerOpenAngle[iPfp]     =      shower->OpenAngle();
-
-  std::vector<art::Ptr<recob::Hit>> pfpHits;
-  pfpHits = dune_ana::DUNEAnaShowerUtils::GetHits(shower,e,fShowerLabel);
-  fPFPNHits[iPfp] = pfpHits.size();
-  std::vector<art::Ptr<recob::Hit> > pfpHitsView0 = dune_ana::DUNEAnaPFParticleUtils::GetViewHits(pfp, e, fPFParticleLabel, 0);
-  fPFPNHitsView[iPfp][0] = pfpHitsView0.size();
-  std::vector<art::Ptr<recob::Hit> > pfpHitsView1 = dune_ana::DUNEAnaPFParticleUtils::GetViewHits(pfp, e, fPFParticleLabel, 1);
-  fPFPNHitsView[iPfp][1] = pfpHitsView1.size();
-  std::vector<art::Ptr<recob::Hit> > pfpHitsView2 = dune_ana::DUNEAnaPFParticleUtils::GetViewHits(pfp, e, fPFParticleLabel, 2);
-  fPFPNHitsView[iPfp][2] = pfpHitsView2.size();
-
-  if (e.isRealData())
-    return;
-
-  // Get total hit matching stats...
-  TruthMatchUtils::G4ID g4ID(TruthMatchUtils::TrueParticleIDFromTotalRecoHits(fClockData, pfpHits, fRollUpUnsavedIDs));
-  if (TruthMatchUtils::Valid(g4ID)) {
-    fPFPTrueParticleMatchedID[iPfp] = g4ID;
-
-    int pos(999999);
-    for (int unsigned ipos = 0; ipos < fNMCParticles; ipos++)
-      if (fMCParticleTrackID[ipos] == g4ID)
-        pos=ipos;
-
-    fPFPTrueParticleMatchedPosition[iPfp] = pos;
-  }
-
-  // Get view0 hit matching stats...
-  TruthMatchUtils::G4ID g4IDView0(TruthMatchUtils::TrueParticleIDFromTotalRecoHits(fClockData, pfpHitsView0, fRollUpUnsavedIDs));
-  if (TruthMatchUtils::Valid(g4ID)) {
-    fPFPTrueParticleMatchedIDView[iPfp][0] = g4IDView0;
-
-    for (int unsigned ipos = 0; ipos < fNMCParticles; ipos++) {
-      if (fMCParticleTrackID[ipos] != g4IDView0)
-        continue;
-
-      fPFPTrueParticleMatchedPositionView[iPfp][0] = ipos;
-      break;
-    }
-  }
-
-  // Get view1 hit matching stats...
-  TruthMatchUtils::G4ID g4IDView1(TruthMatchUtils::TrueParticleIDFromTotalRecoHits(fClockData, pfpHitsView1, fRollUpUnsavedIDs));
-  if (TruthMatchUtils::Valid(g4ID)) {
-    fPFPTrueParticleMatchedIDView[iPfp][1] = g4IDView1;
-
-    for (int unsigned ipos = 0; ipos < fNMCParticles; ipos++) {
-      if (fMCParticleTrackID[ipos] != g4IDView1)
-        continue;
-
-      fPFPTrueParticleMatchedPositionView[iPfp][1] = ipos;
-      break;
-    }
-  }
-
-  // Get view2 hit matching stats...
-  TruthMatchUtils::G4ID g4IDView2(TruthMatchUtils::TrueParticleIDFromTotalRecoHits(fClockData, pfpHitsView2, fRollUpUnsavedIDs));
-  if (TruthMatchUtils::Valid(g4ID)) {
-    fPFPTrueParticleMatchedIDView[iPfp][2] = g4IDView2;
-
-    for (int unsigned ipos = 0; ipos < fNMCParticles; ipos++) {
-      if (fMCParticleTrackID[ipos] != g4IDView2)
-        continue;
-
-      fPFPTrueParticleMatchedPositionView[iPfp][2] = ipos;
-      break;
-    }
-  }
 
   return;
 }
@@ -617,31 +574,31 @@ bool test::refactoredPandoraAna::parsePFParticles(art::Event const& e) {
   const std::vector<art::Ptr<recob::PFParticle>> pfparticleVect = dune_ana::DUNEAnaEventUtils::GetPFParticles(e, fPFParticleLabel);
   fNPFParticles = pfparticleVect.size();
 
+  // Perform 3 checks:
+  //  - Are there any PFParticles?
+  //  - Can we access the track list?
+  //  - Can we access the shower list?
   if (! fNPFParticles) {
     std::cout << "No PFParticles found!" << std::endl;
     fTree->Fill();
     return false;
   }
 
-  //Access the Clusters
-  art::Handle<std::vector<recob::Cluster>> clusterHandle;
-  std::vector<art::Ptr<recob::Cluster>> clusterVect;
-
-  if (e.getByLabel(fPFParticleLabel,clusterHandle))
-    art::fill_ptr_vector(clusterVect,clusterHandle);
-
-  art::FindManyP<recob::Cluster> clusterParticleAssoc(pfparticleVect, e, fPFParticleLabel);
   art::Handle<std::vector<recob::Track>> trackHandle;
-
   if (! (e.getByLabel(fTrackLabel, trackHandle))) {
     std::cout << "Unable to find std::vector<recob::Track> with module label: " << fTrackLabel << std::endl;
     fTree->Fill();
     return false;
   }
 
-  std::vector<art::Ptr<recob::Track> > trackList;
-  if (e.getByLabel(fTrackLabel,trackHandle))
-    art::fill_ptr_vector(trackList, trackHandle);
+  art::Handle<std::vector<recob::Shower>> showerHandle;
+  if (! (e.getByLabel(fShowerLabel, showerHandle))) {
+    std::cout << "Unable to find std::vector<recob::Shower> with module label: " << fShowerLabel << std::endl;
+    fTree->Fill();
+    return false;
+  }
+
+  art::FindManyP<recob::Cluster> clusterParticleAssoc(pfparticleVect, e, fPFParticleLabel);
 
   int iPfp(0);
   for (const art::Ptr<recob::PFParticle> &pfp: pfparticleVect) {
@@ -657,7 +614,7 @@ bool test::refactoredPandoraAna::parsePFParticles(art::Event const& e) {
 
     if (!pfpClusters.empty()) {
       int iClu(0);
-      for (const art::Ptr<recob::Cluster> &clu:pfpClusters) {
+      for (const art::Ptr<recob::Cluster> &clu : pfpClusters) {
 
         fPFPCluPlane[iPfp][iClu]    = clu->Plane().asPlaneID().Plane;
         fPFPCluView[iPfp][iClu]     = clu->View();
@@ -676,6 +633,7 @@ bool test::refactoredPandoraAna::parsePFParticles(art::Event const& e) {
     if (dune_ana::DUNEAnaPFParticleUtils::IsShower(pfp, e, fPFParticleLabel, fShowerLabel))
       this->parseShower(e, pfp, iPfp);
 
+    this->findRecoMCMatchPositions(e, pfp, iPfp);
     this->recoMCInfo(e, pfp, iPfp);
 
     iPfp++;
@@ -685,6 +643,7 @@ bool test::refactoredPandoraAna::parsePFParticles(art::Event const& e) {
 }
 
 void test::refactoredPandoraAna::analyze(art::Event const& e) {
+
   // Reset to start.
   reset();
 
@@ -697,27 +656,25 @@ void test::refactoredPandoraAna::analyze(art::Event const& e) {
   std::cout << "============== EVENT ID: " << fEventID << " == RUN ID: " << fRunID << " == SUBRUN ID: " << fSubRunID << " ================" << std::endl;
 
   // Access the truth information
-  if (e.isRealData()) {
-    std::cout << "Can't plot for real data!" << std::endl;
-    return;
-  }
+  if (! e.isRealData()) {
 
-  // Get MCTruth information
-  bool mcTruthParsed = this->processMCTruth(e);
+    // Get MCTruth information
+    bool mcTruthParsed = this->processMCTruth(e);
 
-  if (! mcTruthParsed) {
-    std::cout << "No MCTruth found!" << std::endl;
-    fTree->Fill();
-    return;
-  }
+    if (! mcTruthParsed) {
+      std::cout << "No MCTruth found!" << std::endl;
+      fTree->Fill();
+      return;
+    }
 
-  // Get MCParticle information
-  bool mcParticlesParsed = this->processMCParticles(e);
+    // Get MCParticle information
+    bool mcParticlesParsed = this->processMCParticles(e);
 
-  if (! mcParticlesParsed) {
-    std::cout << "No MCTruth found!" << std::endl;
-    fTree->Fill();
-    return;
+    if (! mcParticlesParsed) {
+      std::cout << "No MCTruth found!" << std::endl;
+      fTree->Fill();
+      return;
+    }
   }
 
   bool pfpParticlesParsed = this->parsePFParticles(e);
@@ -969,7 +926,7 @@ void test::refactoredPandoraAna::reset(bool deepClean) {
       fPFPShowerLength[iPfp]                = 999999;
       fPFPShowerOpenAngle[iPfp]             = 999999;
 
-      for (int iClu=0; iClu<kNMaxPFPClusters; iClu++) {
+      for (int iClu = 0; iClu < kNMaxPFPClusters; iClu++) {
         fPFPCluPlane[iPfp][iClu]    = 999999;
         fPFPCluView[iPfp][iClu]     = 999999;
         fPFPCluNHits[iPfp][iClu]    = 999999;
