@@ -2,13 +2,14 @@ BEGIN_PROLOG
 
 pandoraAnalysis:
 {
-   module_type:		"PandoraAnalysis"
-   TruthLabel:		"largeant"
-   PFParticleLabel:     "pandora"
-   TrackLabel:          "pandoraTrack"
-   ShowerLabel:         "pandoraShower"
-   HitLabel:            "linecluster"
-   RollUpUnsavedIDs:	"true"
+   module_type:      "refactoredPandoraAna"
+   TruthLabel:       "generator"
+   SimulationLabel:  "largeant"
+   PFParticleLabel:  "pandora"
+   TrackLabel:       "pandoraTrack"
+   ShowerLabel:      "pandoraShower"
+   HitLabel:         "linecluster"
+   RollUpUnsavedIDs: "true"
 }
 
 END_PROLOG
