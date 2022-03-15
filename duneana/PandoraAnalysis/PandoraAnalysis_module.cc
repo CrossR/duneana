@@ -72,6 +72,16 @@ public:
 
   void reset(bool deepClean=false);
 
+  // Rollup methods
+  std::map<int,int> TruePrimariesMap(std::map<int, simb::MCParticle>& trackIdToMCParticleMap);
+  std::map<int,int> TruePrimariesMapDeltasRolled(std::map<int, simb::MCParticle>& trackIdToMCParticleMap);
+
+  TruthMatchUtils::G4ID GetTrueParticleIdWithRollup(detinfo::DetectorClocksData const &clockData,
+      const art::Ptr<recob::Hit> &pHit);
+
+  TruthMatchUtils::G4ID GetTrueParticleIdFromTotalRecoHitsWithRollup(detinfo::DetectorClocksData const &clockData,
+      const std::vector<art::Ptr<recob::Hit>> &pHits);
+
 private:
 
   // Declare member data here.
@@ -83,13 +93,16 @@ private:
   unsigned int fSubRunID;
 
   unsigned int fNMCParticles;
+  unsigned int fNRolledUpMCParticles;
   unsigned int fNPFParticles;
 
+  std::map<int,int> fTrackIDToParentTrackIDMap;
+  std::map<int,int> fTrackIDToMCIDMap;
 /*  static const int kNMaxMCParticles = 200;
   static const int kNMaxPFParticles = 200;
   static const int kNMaxPFPClusters = 3;*/
 
-  static const int kNMaxMCParticles = 20000;
+  static const int kNMaxMCParticles = 35000;
   static const int kNMaxPFParticles = 2000;
   static const int kNMaxPFPClusters = 100;
   static const int kNViews = 3;
@@ -232,6 +245,74 @@ test::pandoraAnalysis::pandoraAnalysis(fhicl::ParameterSet const& p)
   fRollUpUnsavedIDs = p.get<bool>("RollUpUnsavedIDs");
 }
 
+std::map<int,int> test::pandoraAnalysis::TruePrimariesMap(std::map<int, simb::MCParticle>& trackIdToMCParticleMap)
+{
+  std::map<int,int> primaries_map;
+
+  for(auto const& [trackID, particle] : trackIdToMCParticleMap)
+  {
+    simb::MCParticle temp_particle = particle;
+    primaries_map[trackID] = trackID;
+
+    while(abs(temp_particle.PdgCode()) == 11 || abs(temp_particle.PdgCode()) == 22) {
+      primaries_map[trackID] = temp_particle.TrackId();
+      temp_particle = trackIdToMCParticleMap[temp_particle.Mother()];
+    }
+  }
+  return primaries_map;
+}
+
+std::map<int,int> test::pandoraAnalysis::TruePrimariesMapDeltasRolled(std::map<int, simb::MCParticle>& trackIdToMCParticleMap)
+{
+  std::map<int,int> primaries_map;
+
+  for(auto const& [trackID, particle] : trackIdToMCParticleMap)
+  {
+    simb::MCParticle temp_particle = particle;
+    primaries_map[trackID] = trackID;
+
+    while(abs(temp_particle.PdgCode()) == 11 || abs(temp_particle.PdgCode()) == 22) {
+
+      bool is_delta = abs(temp_particle.PdgCode()) == 11 && temp_particle.Process() == "muIoni";
+      primaries_map[trackID] = temp_particle.TrackId();
+      temp_particle = trackIdToMCParticleMap[temp_particle.Mother()];
+      bool parent_is_muon = abs(temp_particle.PdgCode()) == 13;
+
+      // If this is a delta, we want to set it to point to its parent, and stop.
+      // temp_particle at this point is the muon parent.
+      if (is_delta && parent_is_muon) {
+        primaries_map[trackID] = temp_particle.TrackId();
+        break;
+      }
+    }
+  }
+
+  return primaries_map;
+}
+
+TruthMatchUtils::G4ID test::pandoraAnalysis::GetTrueParticleIdWithRollup(detinfo::DetectorClocksData
+    const &clockData, const art::Ptr< recob::Hit > &pHit)
+{
+      TruthMatchUtils::G4ID g4ID(TruthMatchUtils::TrueParticleID(clockData, pHit, fRollUpUnsavedIDs));
+
+      if (fTrackIDToParentTrackIDMap.count(g4ID) != 0)
+        return fTrackIDToParentTrackIDMap[g4ID];
+
+      return g4ID;
+}
+
+TruthMatchUtils::G4ID test::pandoraAnalysis::GetTrueParticleIdFromTotalRecoHitsWithRollup(detinfo::DetectorClocksData
+    const &clockData, const std::vector< art::Ptr< recob::Hit >> &pHits)
+{
+      TruthMatchUtils::G4ID g4ID(TruthMatchUtils::TrueParticleIDFromTotalRecoHits(clockData, pHits, fRollUpUnsavedIDs));
+
+      if (fTrackIDToParentTrackIDMap.count(g4ID) != 0)
+        return fTrackIDToParentTrackIDMap[g4ID];
+
+      return g4ID;
+}
+
+
 void test::pandoraAnalysis::analyze(art::Event const& e)
 {
   reset(); //Don't deep clean
@@ -247,18 +328,6 @@ void test::pandoraAnalysis::analyze(art::Event const& e)
   std::vector<art::Ptr<recob::Hit> > allHits;
   if(e.getByLabel(fHitLabel,hitHandle))
   {art::fill_ptr_vector(allHits, hitHandle);}
-
-  //Fill MC particle to hits map
-  std::map<int,int> trueParticleHits, trueParticleHitsView0, trueParticleHitsView1, trueParticleHitsView2;
-  for (const auto& hit: allHits){
-      TruthMatchUtils::G4ID g4ID(TruthMatchUtils::TrueParticleID(clockData, hit, fRollUpUnsavedIDs));
-      if (TruthMatchUtils::Valid(g4ID)){
-          trueParticleHits[g4ID]++;
-          if(hit->View()==0)trueParticleHitsView0[g4ID]++;
-          if(hit->View()==1)trueParticleHitsView1[g4ID]++;
-          if(hit->View()==2)trueParticleHitsView2[g4ID]++;
-      }
-  }
 
   // Get the MC truth
   const std::vector<art::Ptr<simb::MCTruth>> mcTruthVect = dune_ana::DUNEAnaEventUtils::GetMCTruths(e,fTruthLabel);
@@ -290,51 +359,106 @@ void test::pandoraAnalysis::analyze(art::Event const& e)
 
       std::cout << "There is " << fNMCParticles << " MC particles..." << std::endl;
 
+      std::map<int, simb::MCParticle> trackIdToMCParticleMap;
+      for (unsigned int iMc=0; iMc < fNMCParticles; iMc++){
+        simb::MCParticle particle = mcParticles->at(iMc);
+        trackIdToMCParticleMap[particle.TrackId()] = particle;
+      }
+
+      fTrackIDToParentTrackIDMap = this->TruePrimariesMapDeltasRolled(trackIdToMCParticleMap);
+
       if (fNMCParticles > kNMaxMCParticles) {
         std::cout << "WARN: Too many MC Particles: (" << fNMCParticles << ")!" << std::endl;
         std::cout << "WARN: Limiting to first " << kNMaxMCParticles << " particles!" << std::endl;
         fNMCParticles = kNMaxMCParticles;
       }
 
+      // Fill MC particle to hits map.
+      // We delay this until here to ensure that the roll up map is given the
+      // chance to be filled.
+      std::map<int,int> trueParticleHits, trueParticleHitsView0, trueParticleHitsView1, trueParticleHitsView2;
+      for (const auto& hit: allHits){
+        TruthMatchUtils::G4ID g4ID(this->GetTrueParticleIdWithRollup(clockData, hit));
+        if (TruthMatchUtils::Valid(g4ID)){
+          trueParticleHits[g4ID]++;
+          if(hit->View()==0)trueParticleHitsView0[g4ID]++;
+          if(hit->View()==1)trueParticleHitsView1[g4ID]++;
+          if(hit->View()==2)trueParticleHitsView2[g4ID]++;
+        }
+      }
+
       bool isMCPrimary(false);
 
-      for(unsigned int iMc=0; iMc< mcParticles->size(); iMc++){
-        const simb::MCParticle trueParticle = mcParticles->at(iMc);
-        fMCParticleTrueEnergy[iMc]=trueParticle.E();
-        fMCParticlePdgCode[iMc]=trueParticle.PdgCode();
-        fMCParticleTrackID[iMc]=trueParticle.TrackId();
-        fMCParticleVertexTime[iMc]=trueParticle.T();
-        fMCParticleEndTime[iMc]=trueParticle.EndT();
-        fMCParticleParentTrackID[iMc]=trueParticle.Mother();
-        fMCParticleStartProcess[iMc]=trueParticle.Process();
-        fMCParticleEndProcess[iMc]=trueParticle.EndProcess();
-        fMCParticleNTrajectoryPoint[iMc]=trueParticle.NumberTrajectoryPoints();
-        trueParticle.Process()=="primary"? isMCPrimary=true:isMCPrimary=false;
-        fMCIsPrimary[iMc] = isMCPrimary;
-        fMCParticleNHits[iMc]=trueParticleHits[trueParticle.TrackId()];
-        fMCParticleNHitsView[iMc][0]=trueParticleHitsView0[trueParticle.TrackId()];
-        fMCParticleNHitsView[iMc][1]=trueParticleHitsView1[trueParticle.TrackId()];
-        fMCParticleNHitsView[iMc][2]=trueParticleHitsView2[trueParticle.TrackId()];
-        fMCParticleStartPositionX[iMc] = trueParticle.Position().X();
-        fMCParticleStartPositionY[iMc] = trueParticle.Position().Y();
-        fMCParticleStartPositionZ[iMc] = trueParticle.Position().Z();
-        fMCParticleStartPositionT[iMc] = trueParticle.Position().T();
-        fMCParticleEndPositionX[iMc] = trueParticle.EndPosition().X();
-        fMCParticleEndPositionY[iMc] = trueParticle.EndPosition().Y();
-        fMCParticleEndPositionZ[iMc] = trueParticle.EndPosition().Z();
-        fMCParticleEndPositionT[iMc] = trueParticle.EndPosition().T();
+      for (unsigned int iMc=0; iMc < fNMCParticles; iMc++){
 
-        fMCParticleStartMomentumX[iMc] = trueParticle.Momentum().X();
-        fMCParticleStartMomentumY[iMc] = trueParticle.Momentum().Y();
-        fMCParticleStartMomentumZ[iMc] = trueParticle.Momentum().Z();
-        fMCParticleStartMomentumE[iMc] = trueParticle.Momentum().E();
-        fMCParticleEndMomentumX[iMc] = trueParticle.EndMomentum().X();
-        fMCParticleEndMomentumY[iMc] = trueParticle.EndMomentum().Y();
-        fMCParticleEndMomentumZ[iMc] = trueParticle.EndMomentum().Z();
-        fMCParticleEndMomentumE[iMc] = trueParticle.EndMomentum().E();
+        simb::MCParticle trueParticle = mcParticles->at(iMc);
+        simb::MCParticle parentParticle = trueParticle;
 
+        if (fTrackIDToParentTrackIDMap.count(trueParticle.TrackId()) != 0) {
+            if (trackIdToMCParticleMap.count(fTrackIDToParentTrackIDMap[trueParticle.TrackId()]) != 0) {
+              parentParticle = trackIdToMCParticleMap[fTrackIDToParentTrackIDMap[trueParticle.TrackId()]];
+            }
+        }
+
+        int mcID = fNRolledUpMCParticles;
+
+        if (fTrackIDToMCIDMap.count(parentParticle.TrackId()) != 0) {
+          mcID = fTrackIDToMCIDMap[parentParticle.TrackId()];
+        } else {
+          fTrackIDToMCIDMap[parentParticle.TrackId()] = mcID;
+          ++fNRolledUpMCParticles;
+
+          fMCParticleTrackID[mcID] = parentParticle.TrackId();
+          fMCParticleParentTrackID[mcID] = parentParticle.Mother();
+          fMCParticleStartProcess[mcID] = parentParticle.Process();
+          fMCParticleEndProcess[mcID] = parentParticle.EndProcess();
+          fMCParticlePdgCode[mcID] = parentParticle.PdgCode();
+          fMCParticleVertexTime[mcID] = parentParticle.T();
+          fMCParticleEndTime[mcID] = parentParticle.EndT();
+
+          isMCPrimary = parentParticle.Process() == "primary";
+          fMCIsPrimary[mcID] = isMCPrimary;
+
+          fMCParticleStartPositionX[mcID] = parentParticle.Position().X();
+          fMCParticleStartPositionY[mcID] = parentParticle.Position().Y();
+          fMCParticleStartPositionZ[mcID] = parentParticle.Position().Z();
+          fMCParticleStartPositionT[mcID] = parentParticle.Position().T();
+          fMCParticleEndPositionX[mcID] = parentParticle.EndPosition().X();
+          fMCParticleEndPositionY[mcID] = parentParticle.EndPosition().Y();
+          fMCParticleEndPositionZ[mcID] = parentParticle.EndPosition().Z();
+          fMCParticleEndPositionT[mcID] = parentParticle.EndPosition().T();
+
+          fMCParticleStartMomentumX[mcID] = parentParticle.Momentum().X();
+          fMCParticleStartMomentumY[mcID] = parentParticle.Momentum().Y();
+          fMCParticleStartMomentumZ[mcID] = parentParticle.Momentum().Z();
+          fMCParticleStartMomentumE[mcID] = parentParticle.Momentum().E();
+          fMCParticleEndMomentumX[mcID] = parentParticle.EndMomentum().X();
+          fMCParticleEndMomentumY[mcID] = parentParticle.EndMomentum().Y();
+          fMCParticleEndMomentumZ[mcID] = parentParticle.EndMomentum().Z();
+          fMCParticleEndMomentumE[mcID] = parentParticle.EndMomentum().E();
+        }
+
+        if (fMCParticleTrueEnergy[mcID] == -999999) {
+          fMCParticleTrueEnergy[mcID] = trueParticle.E();
+          fMCParticleNTrajectoryPoint[mcID] = trueParticle.NumberTrajectoryPoints();
+
+          fMCParticleNHits[mcID] = trueParticleHits[trueParticle.TrackId()];
+          fMCParticleNHitsView[mcID][0] = trueParticleHitsView0[trueParticle.TrackId()];
+          fMCParticleNHitsView[mcID][1] = trueParticleHitsView1[trueParticle.TrackId()];
+          fMCParticleNHitsView[mcID][2] = trueParticleHitsView2[trueParticle.TrackId()];
+        } else {
+          fMCParticleTrueEnergy[mcID] += trueParticle.E();
+          fMCParticleNTrajectoryPoint[mcID] += trueParticle.NumberTrajectoryPoints();
+
+          fMCParticleNHits[mcID] += trueParticleHits[trueParticle.TrackId()];
+          fMCParticleNHitsView[mcID][0] += trueParticleHitsView0[trueParticle.TrackId()];
+          fMCParticleNHitsView[mcID][1] += trueParticleHitsView1[trueParticle.TrackId()];
+          fMCParticleNHitsView[mcID][2] += trueParticleHitsView2[trueParticle.TrackId()];
+        }
       }
     }
+
+    std::cout << "There was " << fTrackIDToMCIDMap.size() << " true total IDs" << std::endl;
   }
 
   //Access the PFParticles from Pandora
@@ -435,21 +559,21 @@ void test::pandoraAnalysis::analyze(art::Event const& e)
       fPFPNHitsView[iPfp][2] = pfpHitsView2.size();
 
       if(!e.isRealData()) {
-        TruthMatchUtils::G4ID g4ID(TruthMatchUtils::TrueParticleIDFromTotalRecoHits(clockData,pfpHits,fRollUpUnsavedIDs));
+        TruthMatchUtils::G4ID g4ID(this->GetTrueParticleIdFromTotalRecoHitsWithRollup(clockData,pfpHits));
         if (TruthMatchUtils::Valid(g4ID)){
           fPFPTrueParticleMatchedID[iPfp] = g4ID;
 
-          int pos(999999); for(int unsigned ipos=0; ipos<fNMCParticles; ipos++) {
+          int pos(999999); for(int unsigned ipos=0; ipos<fNRolledUpMCParticles; ipos++) {
             if(fMCParticleTrackID[ipos]==g4ID)pos=ipos;
           }
           fPFPTrueParticleMatchedPosition[iPfp] = pos;
 
         }
-        TruthMatchUtils::G4ID g4IDView0(TruthMatchUtils::TrueParticleIDFromTotalRecoHits(clockData,pfpHitsView0,fRollUpUnsavedIDs));
+        TruthMatchUtils::G4ID g4IDView0(this->GetTrueParticleIdFromTotalRecoHitsWithRollup(clockData,pfpHitsView0));
         if (TruthMatchUtils::Valid(g4ID))
         {
             fPFPTrueParticleMatchedIDView[iPfp][0] = g4IDView0;
-            for(int unsigned ipos=0; ipos<fNMCParticles; ipos++)
+            for(int unsigned ipos=0; ipos<fNRolledUpMCParticles; ipos++)
             {
                 if (fMCParticleTrackID[ipos] != g4IDView0)
                     continue;
@@ -457,11 +581,11 @@ void test::pandoraAnalysis::analyze(art::Event const& e)
                 break;
             }
         }
-        TruthMatchUtils::G4ID g4IDView1(TruthMatchUtils::TrueParticleIDFromTotalRecoHits(clockData,pfpHitsView1,fRollUpUnsavedIDs));
+        TruthMatchUtils::G4ID g4IDView1(this->GetTrueParticleIdFromTotalRecoHitsWithRollup(clockData,pfpHitsView1));
         if (TruthMatchUtils::Valid(g4ID))
         {
             fPFPTrueParticleMatchedIDView[iPfp][1] = g4IDView1;
-            for(int unsigned ipos=0; ipos<fNMCParticles; ipos++)
+            for(int unsigned ipos=0; ipos<fNRolledUpMCParticles; ipos++)
             {
                 if (fMCParticleTrackID[ipos] != g4IDView1)
                     continue;
@@ -469,11 +593,11 @@ void test::pandoraAnalysis::analyze(art::Event const& e)
                 break;
             }
         }
-        TruthMatchUtils::G4ID g4IDView2(TruthMatchUtils::TrueParticleIDFromTotalRecoHits(clockData,pfpHitsView2,fRollUpUnsavedIDs));
+        TruthMatchUtils::G4ID g4IDView2(this->GetTrueParticleIdFromTotalRecoHitsWithRollup(clockData,pfpHitsView2));
         if (TruthMatchUtils::Valid(g4ID))
         {
             fPFPTrueParticleMatchedIDView[iPfp][2] = g4IDView2;
-            for(int unsigned ipos=0; ipos<fNMCParticles; ipos++)
+            for(int unsigned ipos=0; ipos<fNRolledUpMCParticles; ipos++)
             {
                 if (fMCParticleTrackID[ipos] != g4IDView2)
                     continue;
@@ -515,19 +639,19 @@ void test::pandoraAnalysis::analyze(art::Event const& e)
       fPFPNHitsView[iPfp][2] = pfpHitsView2.size();
 
       if(!e.isRealData()) {
-        TruthMatchUtils::G4ID g4ID(TruthMatchUtils::TrueParticleIDFromTotalRecoHits(clockData,pfpHits,fRollUpUnsavedIDs));
+        TruthMatchUtils::G4ID g4ID(this->GetTrueParticleIdFromTotalRecoHitsWithRollup(clockData,pfpHits));
         if (TruthMatchUtils::Valid(g4ID)){
           fPFPTrueParticleMatchedID[iPfp] = g4ID;
-          int pos(999999); for(int unsigned ipos=0; ipos<fNMCParticles; ipos++) {
+          int pos(999999); for(int unsigned ipos=0; ipos<fNRolledUpMCParticles; ipos++) {
             if(fMCParticleTrackID[ipos]==g4ID)pos=ipos;
           }
           fPFPTrueParticleMatchedPosition[iPfp] = pos;
         }
-        TruthMatchUtils::G4ID g4IDView0(TruthMatchUtils::TrueParticleIDFromTotalRecoHits(clockData,pfpHitsView0,fRollUpUnsavedIDs));
+        TruthMatchUtils::G4ID g4IDView0(this->GetTrueParticleIdFromTotalRecoHitsWithRollup(clockData,pfpHitsView0));
         if (TruthMatchUtils::Valid(g4ID))
         {
             fPFPTrueParticleMatchedIDView[iPfp][0] = g4IDView0;
-            for(int unsigned ipos=0; ipos<fNMCParticles; ipos++)
+            for(int unsigned ipos=0; ipos<fNRolledUpMCParticles; ipos++)
             {
                 if (fMCParticleTrackID[ipos] != g4IDView0)
                     continue;
@@ -535,11 +659,11 @@ void test::pandoraAnalysis::analyze(art::Event const& e)
                 break;
             }
         }
-        TruthMatchUtils::G4ID g4IDView1(TruthMatchUtils::TrueParticleIDFromTotalRecoHits(clockData,pfpHitsView1,fRollUpUnsavedIDs));
+        TruthMatchUtils::G4ID g4IDView1(this->GetTrueParticleIdFromTotalRecoHitsWithRollup(clockData,pfpHitsView1));
         if (TruthMatchUtils::Valid(g4ID))
         {
             fPFPTrueParticleMatchedIDView[iPfp][1] = g4IDView1;
-            for(int unsigned ipos=0; ipos<fNMCParticles; ipos++)
+            for(int unsigned ipos=0; ipos<fNRolledUpMCParticles; ipos++)
             {
                 if (fMCParticleTrackID[ipos] != g4IDView1)
                     continue;
@@ -547,11 +671,11 @@ void test::pandoraAnalysis::analyze(art::Event const& e)
                 break;
             }
         }
-        TruthMatchUtils::G4ID g4IDView2(TruthMatchUtils::TrueParticleIDFromTotalRecoHits(clockData,pfpHitsView2,fRollUpUnsavedIDs));
+        TruthMatchUtils::G4ID g4IDView2(this->GetTrueParticleIdFromTotalRecoHitsWithRollup(clockData,pfpHitsView2));
         if (TruthMatchUtils::Valid(g4ID))
         {
             fPFPTrueParticleMatchedIDView[iPfp][2] = g4IDView2;
-            for(int unsigned ipos=0; ipos<fNMCParticles; ipos++)
+            for(int unsigned ipos=0; ipos<fNRolledUpMCParticles; ipos++)
             {
                 if (fMCParticleTrackID[ipos] != g4IDView2)
                     continue;
@@ -566,7 +690,7 @@ void test::pandoraAnalysis::analyze(art::Event const& e)
     if(!e.isRealData()) {
       //Fill shared MC particle to hits map for this specific Pfp
       for (const auto& hit: pfpHits){
-          TruthMatchUtils::G4ID g4ID(TruthMatchUtils::TrueParticleID(clockData, hit, fRollUpUnsavedIDs));
+          TruthMatchUtils::G4ID g4ID(this->GetTrueParticleIdWithRollup(clockData, hit));
           if (TruthMatchUtils::Valid(g4ID)){
               if(g4ID==fPFPTrueParticleMatchedID[iPfp])++fPFPNSharedTrueParticleHits[iPfp];
               if(g4ID==fPFPTrueParticleMatchedID[iPfp] && hit->View()==0)++fPFPNSharedTrueParticleHitsView[iPfp][0];
@@ -615,6 +739,7 @@ void test::pandoraAnalysis::beginJob()
   fTree->Branch("runID",&fRunID,"runID/i");
   fTree->Branch("subrunID",&fSubRunID,"subrunID/i");
   fTree->Branch("nMCParticles",&fNMCParticles,"nMCParticles/i");
+  fTree->Branch("nRolledUpMCParticles",&fNRolledUpMCParticles,"nRolledUpMCParticles/i");
   fTree->Branch("nPFParticles",&fNPFParticles,"nPFParticles/i");
 
   //MC truth branches
@@ -748,6 +873,9 @@ void test::pandoraAnalysis::reset(bool deepClean)
     fNuVertexYTruth = 999999;
     fNuVertexZTruth = 999999;
 
+    fTrackIDToParentTrackIDMap.clear();
+    fTrackIDToMCIDMap.clear();
+
     for(unsigned int iMc= 0; iMc <(deepClean ? kNMaxMCParticles : fNMCParticles); iMc++){
       fMCIsPrimary[iMc]=0;
       fMCParticlePdgCode[iMc]=0;
@@ -781,7 +909,9 @@ void test::pandoraAnalysis::reset(bool deepClean)
       fMCParticleNHitsView[iMc][2]=999999;
       //fMCPfoMatchedPosition[iMc]=999999;
     }
+
     fNMCParticles = 0;
+    fNRolledUpMCParticles = 0;
 
     for(unsigned int iPfp=0; iPfp<(deepClean ? kNMaxPFParticles : fNPFParticles); iPfp++){
 
