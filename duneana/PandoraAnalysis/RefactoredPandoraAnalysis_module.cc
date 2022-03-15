@@ -243,7 +243,7 @@ float test::refactoredPandoraAna::getCompleteness(std::vector<art::Ptr<recob::Hi
 
   std::map<int,int> objectHitsMap;
 
-  for(unsigned int i = 0; i < hits.size(); ++i) {
+  for (unsigned int i = 0; i < hits.size(); ++i) {
     int primaryID = TruthMatchUtils::TrueParticleID(fClockData, hits[i], true);
     objectHitsMap[primaryID]++;
   }
@@ -260,7 +260,7 @@ float test::refactoredPandoraAna::getPurity(std::vector<art::Ptr<recob::Hit>> co
 
   std::map<int,int> objectHitsMap;
 
-  for(unsigned int i = 0; i < hits.size(); ++i) {
+  for (unsigned int i = 0; i < hits.size(); ++i) {
     int primaryID = TruthMatchUtils::TrueParticleID(fClockData, hits[i], true);
     objectHitsMap[primaryID]++;
   }
@@ -273,7 +273,7 @@ bool test::refactoredPandoraAna::processMCTruth(art::Event const& e) {
   const std::vector<art::Ptr<simb::MCTruth>> mcTruthVect = dune_ana::DUNEAnaEventUtils::GetMCTruths(e, fTruthLabel);
 
   // Find the neutrino and store its information.
-  for (unsigned int iTruth = 0; iTruth < mcTruthVect.size(); iTruth++){
+  for (unsigned int iTruth = 0; iTruth < mcTruthVect.size(); iTruth++) {
 
     const art::Ptr<simb::MCTruth> truth = mcTruthVect[iTruth];
 
@@ -297,7 +297,8 @@ bool test::refactoredPandoraAna::processMCTruth(art::Event const& e) {
 bool test::refactoredPandoraAna::processMCParticles(art::Event const& e) {
   // Get the MC Particles
   art::ValidHandle<std::vector<simb::MCParticle>> mcParticles = e.getValidHandle<std::vector<simb::MCParticle>>(fSimLabel);
-  if(! mcParticles.isValid())
+
+  if (! mcParticles.isValid())
     return false;
 
   fNMCParticles = mcParticles->size();
@@ -307,7 +308,7 @@ bool test::refactoredPandoraAna::processMCParticles(art::Event const& e) {
   // Get all hits.
   art::Handle<std::vector<recob::Hit>> hitHandle;
   std::vector<art::Ptr<recob::Hit> > allHits;
-  if(e.getByLabel(fHitLabel, hitHandle))
+  if (e.getByLabel(fHitLabel, hitHandle))
     art::fill_ptr_vector(allHits, hitHandle);
 
   // Fill MC particle to hits map.
@@ -320,11 +321,11 @@ bool test::refactoredPandoraAna::processMCParticles(art::Event const& e) {
 
       trueParticleHits[g4ID]++;
 
-      if(hit->View()==0)
+      if (hit->View()==0)
         trueParticleHitsView0[g4ID]++;
-      if(hit->View()==1)
+      if (hit->View()==1)
         trueParticleHitsView1[g4ID]++;
-      if(hit->View()==2)
+      if (hit->View()==2)
         trueParticleHitsView2[g4ID]++;
   }
 
@@ -377,6 +378,7 @@ bool test::refactoredPandoraAna::processMCParticles(art::Event const& e) {
 }
 
 void test::refactoredPandoraAna::parseTrack(art::Event const& e, const art::Ptr<recob::PFParticle> &pfp, int iPfp) {
+
   fPFPIsTrack[iPfp] = true;
   art::Ptr<recob::Track> track = dune_ana::DUNEAnaPFParticleUtils::GetTrack(pfp, e, fPFParticleLabel, fTrackLabel);
 
@@ -420,7 +422,7 @@ void test::refactoredPandoraAna::parseTrack(art::Event const& e, const art::Ptr<
   std::vector<art::Ptr<recob::Hit> > pfpHitsView2 = dune_ana::DUNEAnaPFParticleUtils::GetViewHits(pfp, e, fPFParticleLabel, 2);
   fPFPNHitsView[iPfp][2] = pfpHitsView2.size();
 
-  if(e.isRealData())
+  if (e.isRealData())
     return;
 
   // Get total hit matching stats...
@@ -429,8 +431,8 @@ void test::refactoredPandoraAna::parseTrack(art::Event const& e, const art::Ptr<
     fPFPTrueParticleMatchedID[iPfp] = g4ID;
 
     int pos(999999);
-    for(int unsigned ipos = 0; ipos < fNMCParticles; ipos++)
-      if(fMCParticleTrackID[ipos] == g4ID)
+    for (int unsigned ipos = 0; ipos < fNMCParticles; ipos++)
+      if (fMCParticleTrackID[ipos] == g4ID)
         pos = ipos;
 
     fPFPTrueParticleMatchedPosition[iPfp] = pos;
@@ -441,7 +443,7 @@ void test::refactoredPandoraAna::parseTrack(art::Event const& e, const art::Ptr<
   if (TruthMatchUtils::Valid(g4ID)) {
     fPFPTrueParticleMatchedIDView[iPfp][0] = g4IDView0;
 
-    for(int unsigned ipos = 0; ipos < fNMCParticles; ipos++) {
+    for (int unsigned ipos = 0; ipos < fNMCParticles; ipos++) {
       if (fMCParticleTrackID[ipos] != g4IDView0)
         continue;
 
@@ -455,7 +457,7 @@ void test::refactoredPandoraAna::parseTrack(art::Event const& e, const art::Ptr<
   if (TruthMatchUtils::Valid(g4ID)) {
     fPFPTrueParticleMatchedIDView[iPfp][1] = g4IDView1;
 
-    for(int unsigned ipos = 0; ipos < fNMCParticles; ipos++) {
+    for (int unsigned ipos = 0; ipos < fNMCParticles; ipos++) {
       if (fMCParticleTrackID[ipos] != g4IDView1)
         continue;
 
@@ -469,7 +471,7 @@ void test::refactoredPandoraAna::parseTrack(art::Event const& e, const art::Ptr<
   if (TruthMatchUtils::Valid(g4ID)) {
     fPFPTrueParticleMatchedIDView[iPfp][2] = g4IDView2;
 
-    for(int unsigned ipos = 0; ipos < fNMCParticles; ipos++) {
+    for (int unsigned ipos = 0; ipos < fNMCParticles; ipos++) {
       if (fMCParticleTrackID[ipos] != g4IDView2)
         continue;
 
@@ -512,7 +514,7 @@ void test::refactoredPandoraAna::parseShower(art::Event const& e, const art::Ptr
   std::vector<art::Ptr<recob::Hit> > pfpHitsView2 = dune_ana::DUNEAnaPFParticleUtils::GetViewHits(pfp, e, fPFParticleLabel, 2);
   fPFPNHitsView[iPfp][2] = pfpHitsView2.size();
 
-  if(e.isRealData())
+  if (e.isRealData())
     return;
 
   // Get total hit matching stats...
@@ -521,8 +523,8 @@ void test::refactoredPandoraAna::parseShower(art::Event const& e, const art::Ptr
     fPFPTrueParticleMatchedID[iPfp] = g4ID;
 
     int pos(999999);
-    for(int unsigned ipos = 0; ipos < fNMCParticles; ipos++)
-      if(fMCParticleTrackID[ipos] == g4ID)
+    for (int unsigned ipos = 0; ipos < fNMCParticles; ipos++)
+      if (fMCParticleTrackID[ipos] == g4ID)
         pos=ipos;
 
     fPFPTrueParticleMatchedPosition[iPfp] = pos;
@@ -533,7 +535,7 @@ void test::refactoredPandoraAna::parseShower(art::Event const& e, const art::Ptr
   if (TruthMatchUtils::Valid(g4ID)) {
     fPFPTrueParticleMatchedIDView[iPfp][0] = g4IDView0;
 
-    for(int unsigned ipos = 0; ipos < fNMCParticles; ipos++) {
+    for (int unsigned ipos = 0; ipos < fNMCParticles; ipos++) {
       if (fMCParticleTrackID[ipos] != g4IDView0)
         continue;
 
@@ -547,7 +549,7 @@ void test::refactoredPandoraAna::parseShower(art::Event const& e, const art::Ptr
   if (TruthMatchUtils::Valid(g4ID)) {
     fPFPTrueParticleMatchedIDView[iPfp][1] = g4IDView1;
 
-    for(int unsigned ipos = 0; ipos < fNMCParticles; ipos++) {
+    for (int unsigned ipos = 0; ipos < fNMCParticles; ipos++) {
       if (fMCParticleTrackID[ipos] != g4IDView1)
         continue;
 
@@ -561,7 +563,7 @@ void test::refactoredPandoraAna::parseShower(art::Event const& e, const art::Ptr
   if (TruthMatchUtils::Valid(g4ID)) {
     fPFPTrueParticleMatchedIDView[iPfp][2] = g4IDView2;
 
-    for(int unsigned ipos = 0; ipos < fNMCParticles; ipos++) {
+    for (int unsigned ipos = 0; ipos < fNMCParticles; ipos++) {
       if (fMCParticleTrackID[ipos] != g4IDView2)
         continue;
 
@@ -575,7 +577,7 @@ void test::refactoredPandoraAna::parseShower(art::Event const& e, const art::Ptr
 
 void test::refactoredPandoraAna::recoMCInfo(art::Event const& e, const art::Ptr<recob::PFParticle> &pfp, int iPfp) {
 
-  if(e.isRealData())
+  if (e.isRealData())
     return;
 
   // Can't find the MC match, can't do anything.
@@ -599,11 +601,11 @@ void test::refactoredPandoraAna::recoMCInfo(art::Event const& e, const art::Ptr<
   fPFPPurityView[iPfp][1] = this->getPurity(particleHits1, truthId, 1);
   fPFPPurityView[iPfp][2] = this->getPurity(particleHits2, truthId, 2);
 
-  if(fMCParticlePdgCode[fPFPTrueParticleMatchedPosition[iPfp]] > 0 && fMCParticlePdgCode[fPFPTrueParticleMatchedPosition[iPfp]] < 999999)
+  if (fMCParticlePdgCode[fPFPTrueParticleMatchedPosition[iPfp]] > 0 && fMCParticlePdgCode[fPFPTrueParticleMatchedPosition[iPfp]] < 999999)
     fPFPMatchedMCPDG[iPfp] = fMCParticlePdgCode[fPFPTrueParticleMatchedPosition[iPfp]];
-  if(fMCParticleTrueEnergy[fPFPTrueParticleMatchedPosition[iPfp]] > 0 && fMCParticleTrueEnergy[fPFPTrueParticleMatchedPosition[iPfp]] < 999999)
+  if (fMCParticleTrueEnergy[fPFPTrueParticleMatchedPosition[iPfp]] > 0 && fMCParticleTrueEnergy[fPFPTrueParticleMatchedPosition[iPfp]] < 999999)
     fPFPMatchedMCEnergy[iPfp] = fMCParticleTrueEnergy[fPFPTrueParticleMatchedPosition[iPfp]];
-  if(fMCParticleNHits[fPFPTrueParticleMatchedPosition[iPfp]] > 0 && fMCParticleNHits[fPFPTrueParticleMatchedPosition[iPfp]] < 999999)
+  if (fMCParticleNHits[fPFPTrueParticleMatchedPosition[iPfp]] > 0 && fMCParticleNHits[fPFPTrueParticleMatchedPosition[iPfp]] < 999999)
     fPFPMatchedMCNHits[iPfp] = fMCParticleNHits[fPFPTrueParticleMatchedPosition[iPfp]];
 
   return;
@@ -615,7 +617,7 @@ bool test::refactoredPandoraAna::parsePFParticles(art::Event const& e) {
   const std::vector<art::Ptr<recob::PFParticle>> pfparticleVect = dune_ana::DUNEAnaEventUtils::GetPFParticles(e, fPFParticleLabel);
   fNPFParticles = pfparticleVect.size();
 
-  if(! fNPFParticles) {
+  if (! fNPFParticles) {
     std::cout << "No PFParticles found!" << std::endl;
     fTree->Fill();
     return false;
@@ -642,7 +644,7 @@ bool test::refactoredPandoraAna::parsePFParticles(art::Event const& e) {
     art::fill_ptr_vector(trackList, trackHandle);
 
   int iPfp(0);
-  for(const art::Ptr<recob::PFParticle> &pfp: pfparticleVect) {
+  for (const art::Ptr<recob::PFParticle> &pfp: pfparticleVect) {
 
     fPFPID[iPfp]        = iPfp;
     fPFPIsPrimary[iPfp] = pfp->IsPrimary();
@@ -653,9 +655,9 @@ bool test::refactoredPandoraAna::parsePFParticles(art::Event const& e) {
     std::vector<art::Ptr<recob::Cluster>> pfpClusters = clusterParticleAssoc.at(pfp.key());
     fPFPNClusters[iPfp] = pfpClusters.size();
 
-    if(!pfpClusters.empty()) {
+    if (!pfpClusters.empty()) {
       int iClu(0);
-      for(const art::Ptr<recob::Cluster> &clu:pfpClusters) {
+      for (const art::Ptr<recob::Cluster> &clu:pfpClusters) {
 
         fPFPCluPlane[iPfp][iClu]    = clu->Plane().asPlaneID().Plane;
         fPFPCluView[iPfp][iClu]     = clu->View();
@@ -695,7 +697,7 @@ void test::refactoredPandoraAna::analyze(art::Event const& e) {
   std::cout << "============== EVENT ID: " << fEventID << " == RUN ID: " << fRunID << " == SUBRUN ID: " << fSubRunID << " ================" << std::endl;
 
   // Access the truth information
-  if(e.isRealData()) {
+  if (e.isRealData()) {
     std::cout << "Can't plot for real data!" << std::endl;
     return;
   }
@@ -910,7 +912,7 @@ void test::refactoredPandoraAna::reset(bool deepClean) {
 
     fNMCParticles = 0;
 
-    for(unsigned int iPfp = 0; iPfp < (deepClean ? kNMaxPFParticles : fNPFParticles); iPfp++) {
+    for (unsigned int iPfp = 0; iPfp < (deepClean ? kNMaxPFParticles : fNPFParticles); iPfp++) {
 
       fPFPID[iPfp]                          = 999999;
       fPFPTrueParticleMatchedID[iPfp]       = 999999;
