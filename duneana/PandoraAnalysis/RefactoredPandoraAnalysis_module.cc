@@ -71,7 +71,7 @@ public:
 
   // High-level functions
   float getPurity(std::vector<art::Ptr<recob::Hit>> const &hits, int const &trackID, int view = -1);
-  float getCompleteness(std::vector<art::Ptr<recob::Hit>> const &hits, int const &trackID, int view = -1);
+  float getCompleteness(const int iPfp, std::vector<art::Ptr<recob::Hit>> const &hits, int const &trackID, int view = -1);
 
   // Functions per concern
   bool processMCTruth(art::Event const& e);
@@ -248,7 +248,7 @@ test::refactoredPandoraAna::refactoredPandoraAna(fhicl::ParameterSet const& p)
 }
 
 
-float test::refactoredPandoraAna::getCompleteness(std::vector<art::Ptr<recob::Hit>> const &hits, int const &trackID, int view) {
+float test::refactoredPandoraAna::getCompleteness(const int iPfp, std::vector<art::Ptr<recob::Hit>> const &hits, int const &trackID, int view) {
 
   std::map<int, int> objectHitsMap;
 
@@ -257,10 +257,10 @@ float test::refactoredPandoraAna::getCompleteness(std::vector<art::Ptr<recob::Hi
     objectHitsMap[primaryID]++;
   }
 
-  int baseNumOfHits = fMCParticleNHits[fPFPTrueParticleMatchedPosition[trackID]];
+  int baseNumOfHits = fMCParticleNHits[fPFPTrueParticleMatchedPosition[iPfp]];
 
   if (view != -1 && view <= kNViews)
-    baseNumOfHits = fMCParticleNHitsView[fPFPTrueParticleMatchedPosition[trackID]][0];
+    baseNumOfHits = fMCParticleNHitsView[fPFPTrueParticleMatchedPosition[iPfp]][view];
 
   return (baseNumOfHits == 999999) ? 999999 : objectHitsMap[trackID] / static_cast<float>(baseNumOfHits);
 }
@@ -541,19 +541,19 @@ void test::refactoredPandoraAna::recoMCInfo(art::Event const& e, const art::Ptr<
   if (fPFPTrueParticleMatchedPosition[iPfp] == 999999)
     return;
 
-  std::vector<art::Ptr<recob::Hit>> particleHits = dune_ana::DUNEAnaPFParticleUtils::GetHits(pfp, e, fHitLabel);
-  std::vector<art::Ptr<recob::Hit>> particleHits0 = dune_ana::DUNEAnaPFParticleUtils::GetViewHits(pfp, e, fHitLabel, 0);
-  std::vector<art::Ptr<recob::Hit>> particleHits1 = dune_ana::DUNEAnaPFParticleUtils::GetViewHits(pfp, e, fHitLabel, 1);
-  std::vector<art::Ptr<recob::Hit>> particleHits2 = dune_ana::DUNEAnaPFParticleUtils::GetViewHits(pfp, e, fHitLabel, 2);
+  std::vector<art::Ptr<recob::Hit>> particleHits = dune_ana::DUNEAnaPFParticleUtils::GetHits(pfp, e, fPFParticleLabel);
+  std::vector<art::Ptr<recob::Hit>> particleHits0 = dune_ana::DUNEAnaPFParticleUtils::GetViewHits(pfp, e, fPFParticleLabel, 0);
+  std::vector<art::Ptr<recob::Hit>> particleHits1 = dune_ana::DUNEAnaPFParticleUtils::GetViewHits(pfp, e, fPFParticleLabel, 1);
+  std::vector<art::Ptr<recob::Hit>> particleHits2 = dune_ana::DUNEAnaPFParticleUtils::GetViewHits(pfp, e, fPFParticleLabel, 2);
 
   int truthId = TruthMatchUtils::TrueParticleIDFromTotalRecoHits(fClockData, particleHits, fRollUpUnsavedIDs);
 
-  fPFPCompleteness[iPfp]        = this->getCompleteness(particleHits,      truthId);
-  fPFPCompletenessView[iPfp][0] = this->getCompleteness(particleHits0, truthId, 0);
-  fPFPCompletenessView[iPfp][1] = this->getCompleteness(particleHits1, truthId, 1);
-  fPFPCompletenessView[iPfp][2] = this->getCompleteness(particleHits2, truthId, 2);
+  fPFPCompleteness[iPfp]        = this->getCompleteness(iPfp, particleHits,  truthId);
+  fPFPCompletenessView[iPfp][0] = this->getCompleteness(iPfp, particleHits0, truthId, 0);
+  fPFPCompletenessView[iPfp][1] = this->getCompleteness(iPfp, particleHits1, truthId, 1);
+  fPFPCompletenessView[iPfp][2] = this->getCompleteness(iPfp, particleHits2, truthId, 2);
 
-  fPFPPurity[iPfp]        = this->getPurity(particleHits,      truthId);
+  fPFPPurity[iPfp]        = this->getPurity(particleHits,  truthId);
   fPFPPurityView[iPfp][0] = this->getPurity(particleHits0, truthId, 0);
   fPFPPurityView[iPfp][1] = this->getPurity(particleHits1, truthId, 1);
   fPFPPurityView[iPfp][2] = this->getPurity(particleHits2, truthId, 2);
