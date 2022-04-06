@@ -2,7 +2,7 @@ BEGIN_PROLOG
 
 pandoraAnalysis:
 {
-   module_type:      "refactoredPandoraAna"
+   module_type:      "RefactoredPandoraAnalysis"
    TruthLabel:       "generator"
    SimulationLabel:  "largeant"
    PFParticleLabel:  "pandora"
