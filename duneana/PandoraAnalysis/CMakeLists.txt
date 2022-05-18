@@ -1,3 +1,6 @@
+include_directories( $ENV{PANDORA_INC} )
+include_directories( $ENV{LARPANDORACONTENT_INC} )
+
 art_make( MODULE_LIBRARIES 
 	  larcorealg::Geometry
 	  larcore::Geometry_Geometry_service
@@ -5,21 +8,22 @@ art_make( MODULE_LIBRARIES
 	  lardataobj::Simulation
 	  larsim::MCCheater_BackTrackerService_service
 	  larsim::MCCheater_ParticleInventoryService_service
-          larsim::Utils
+	  larsim::Utils
 	  lardata::Utilities
 	  larevt::Filters
 	  lardataobj::RawData
 	  lardataobj::RecoBase
 	  lardataobj::AnalysisBase
 	  lardata::RecoObjects
-    	  lardata::ArtDataHelper
+	  lardata::ArtDataHelper
 	  larreco::RecoAlg
 	  larpandora::LArPandoraInterface
+	  larpandoracontent::LArPandoraContent
 	  dunecore::SignalShapingServiceDUNE10kt_service
 	  dunecore::SignalShapingServiceDUNE35t_service
-          nusimdata::SimulationBase
+	  nusimdata::SimulationBase
 	  dunereco::AnaUtils
-          ART_FRAMEWORK_CORE
+	  ART_FRAMEWORK_CORE
 	  ART_FRAMEWORK_PRINCIPAL
 	  ART_FRAMEWORK_SERVICES_REGISTRY
 	  ART_ROOT_IO_TFILE_SUPPORT
@@ -31,9 +35,9 @@ art_make( MODULE_LIBRARIES
 	  messagefacility::MF_MessageLogger
 	  fhiclcpp::fhiclcpp
 	  cetlib::cetlib cetlib_except
-          ROOT_GEOM
-          ROOT_XMLIO
-          ROOT_GDML
+	  ROOT_GEOM
+	  ROOT_XMLIO
+	  ROOT_GDML
 	  ROOT_BASIC_LIB_LIST
         )
 

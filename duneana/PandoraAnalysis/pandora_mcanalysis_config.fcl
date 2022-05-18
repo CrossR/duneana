@@ -1,0 +1,10 @@
+BEGIN_PROLOG
+
+pandoraAnalysis:
+{
+   module_type:      "MCShowerAnalysis"
+   TruthLabel:       "generator"
+   SimulationLabel:  "largeant"
+}
+
+END_PROLOG
