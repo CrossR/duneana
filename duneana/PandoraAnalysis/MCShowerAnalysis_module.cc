@@ -46,6 +46,7 @@ namespace test {
   class mcShowerPandoraAna;
 }
 
+typedef std::map<int, std::vector<pandora::CartesianVector>> TrackIDToIDEsMap;
 
 class test::mcShowerPandoraAna : public art::EDAnalyzer {
 public:
@@ -71,7 +72,7 @@ public:
   bool processMCParticles(art::Event const& e);
 
   // Get shower information
-  bool getMCShowerInformation(art::Event const& e, const simb::MCParticle &mcParticle, const int iMc);
+  void getMCShowerInformation(art::Event const& e, TrackIDToIDEsMap &idToIDEs, const simb::MCParticle &mcParticle, const int iMc);
 
   void reset(bool deepClean = false);
 
@@ -129,11 +130,7 @@ private:
 
   std::string fTruthLabel;
   std::string fSimLabel;
-  std::string fHitLabel;
-  std::string fTrackLabel;
-  std::string fShowerLabel;
-  std::string fPFParticleLabel;
-  bool fRollUpUnsavedIDs;
+  std::string fSimChannelLabel;
 
   const geo::Geometry* fGeom;
 };
@@ -144,6 +141,7 @@ test::mcShowerPandoraAna::mcShowerPandoraAna(fhicl::ParameterSet const& p)
 {
   fTruthLabel       = p.get<std::string>("TruthLabel");
   fSimLabel         = p.get<std::string>("SimulationLabel");
+  fSimChannelLabel  = p.get<std::string>("SimChannelLabel");
 }
 
 
@@ -173,61 +171,75 @@ bool test::mcShowerPandoraAna::processMCTruth(art::Event const& e) {
   return true;
 }
 
-bool test::mcShowerPandoraAna::getMCShowerInformation(art::Event const& e, const simb::MCParticle &mcParticle, const int iMc) {
+void test::mcShowerPandoraAna::getMCShowerInformation(
+    art::Event const& e, TrackIDToIDEsMap &idToIDEs, const simb::MCParticle &mcParticle, const int iMc
+) {
 
-  if ((std::abs(mcParticle.PdgCode()) != 11) || (std::abs(mcParticle.PdgCode()) != 22)) {
-      return true;
+  if ((std::abs(mcParticle.PdgCode()) != 11) && (std::abs(mcParticle.PdgCode()) != 22)) {
+      return;
   }
 
-  const auto mcTrajectory(mcParticle.Trajectory());
+  if (idToIDEs.count(mcParticle.TrackId()) == 0) {
+    return;
+  }
 
-  const TLorentzVector mcVertex(mcTrajectory.Position(0));
+  const TLorentzVector mcVertex(mcParticle.Position(0));
   const pandora::CartesianVector vertexPosition(mcVertex.X(), mcVertex.Y(), mcVertex.Z());
 
-  std::vector<pandora::CartesianVector> cartesianPointVector;
+  std::vector<pandora::CartesianVector> cartesianPointVector(idToIDEs[mcParticle.TrackId()]);
 
-  for (unsigned int i = 0; i < mcTrajectory.size(); ++i) {
-    const TLorentzVector mcStep(mcTrajectory.Position(i));
-    cartesianPointVector.emplace_back(pandora::CartesianVector(mcStep.X(), mcStep.Y(), mcStep.Z()));
-  }
+  std::cout << "This shower has " << cartesianPointVector.size() << " IDEs..." << std::endl;
 
-  const lar_content::LArShowerPCA initialLArShowerPCA(lar_content::LArPfoHelper::GetPrincipalComponents(cartesianPointVector, vertexPosition));
+  try {
 
-  const pandora::CartesianVector& centroid(initialLArShowerPCA.GetCentroid());
-  const pandora::CartesianVector& primaryAxis(initialLArShowerPCA.GetPrimaryAxis());
-  const pandora::CartesianVector& secondaryAxis(initialLArShowerPCA.GetSecondaryAxis());
-  const pandora::CartesianVector& tertiaryAxis(initialLArShowerPCA.GetTertiaryAxis());
-  const pandora::CartesianVector& eigenValues(initialLArShowerPCA.GetEigenValues());
+    const lar_content::LArShowerPCA initialLArShowerPCA(lar_content::LArPfoHelper::GetPrincipalComponents(cartesianPointVector, vertexPosition));
 
-  const pandora::CartesianVector projectedVertexPosition(centroid - (primaryAxis.GetUnitVector() * (centroid - vertexPosition).GetDotProduct(primaryAxis)));
+    const pandora::CartesianVector& centroid(initialLArShowerPCA.GetCentroid());
+    const pandora::CartesianVector& primaryAxis(initialLArShowerPCA.GetPrimaryAxis());
+    const pandora::CartesianVector& secondaryAxis(initialLArShowerPCA.GetSecondaryAxis());
+    const pandora::CartesianVector& tertiaryAxis(initialLArShowerPCA.GetTertiaryAxis());
+    const pandora::CartesianVector& eigenValues(initialLArShowerPCA.GetEigenValues());
 
-  const float testProjection(primaryAxis.GetDotProduct(projectedVertexPosition - centroid));
-  const float directionScaleFactor((testProjection > std::numeric_limits<float>::epsilon()) ? -1.f : 1.f);
+    const pandora::CartesianVector projectedVertexPosition(centroid - (primaryAxis.GetUnitVector() * (centroid - vertexPosition).GetDotProduct(primaryAxis)));
 
-  const lar_content::LArShowerPCA larShowerPCA(centroid,
-                                               primaryAxis * directionScaleFactor,
-                                               secondaryAxis * directionScaleFactor,
-                                               tertiaryAxis * directionScaleFactor,
-                                               eigenValues);
+    const float testProjection(primaryAxis.GetDotProduct(projectedVertexPosition - centroid));
+    const float directionScaleFactor((testProjection > std::numeric_limits<float>::epsilon()) ? -1.f : 1.f);
 
-  const pandora::CartesianVector& showerLength(larShowerPCA.GetAxisLengths());
+    const lar_content::LArShowerPCA larShowerPCA(centroid,
+        primaryAxis * directionScaleFactor,
+        secondaryAxis * directionScaleFactor,
+        tertiaryAxis * directionScaleFactor,
+        eigenValues);
 
-  const float length(showerLength.GetX());
-  const float openingAngle(larShowerPCA.GetPrimaryLength() > 0.f ?
+    const pandora::CartesianVector& showerLength(larShowerPCA.GetAxisLengths());
+
+    const float length(showerLength.GetX());
+    const float openingAngle(larShowerPCA.GetPrimaryLength() > 0.f ?
         std::atan(larShowerPCA.GetSecondaryLength() / larShowerPCA.GetPrimaryLength()):
         0.f);
 
-  fMCParticleShowerLength[iMc] = length;
-  fMCParticleShowerOpeningAngle[iMc] = openingAngle;
+    fMCParticleShowerLength[iMc] = length;
+    fMCParticleShowerOpeningAngle[iMc] = openingAngle;
 
-  return true;
+  } catch (const pandora::StatusCodeException&) {
+    std::cout << "WARN: Failed to extract shower PCA..." << std::endl;
+  }
+
+  return;
 }
 
 bool test::mcShowerPandoraAna::processMCParticles(art::Event const& e) {
+
   // Get the MC Particles
   art::ValidHandle<std::vector<simb::MCParticle>> mcParticles = e.getValidHandle<std::vector<simb::MCParticle>>(fSimLabel);
 
+  // Get the SimChannels
+  art::ValidHandle<std::vector<sim::SimChannel>> simChannels = e.getValidHandle<std::vector<sim::SimChannel>>(fSimChannelLabel);
+
   if (! mcParticles.isValid())
+    return false;
+
+  if (! simChannels.isValid())
     return false;
 
   fNMCParticles = mcParticles->size();
@@ -239,6 +251,28 @@ bool test::mcShowerPandoraAna::processMCParticles(art::Event const& e) {
     std::cout << "WARN: Limiting to first " << kNMaxMCParticles << " particles!" << std::endl;
     fNMCParticles = kNMaxMCParticles;
   }
+
+  // Pre-parse the sim-channels to build up a map to use later.
+  TrackIDToIDEsMap idToIDEs;
+
+  for (const auto &simChannel : (*simChannels)) {
+    for (const auto &tdcIDEs : simChannel.TDCIDEMap()) {
+      const auto &IDEs = tdcIDEs.second;
+
+      for (const auto &IDE : IDEs) {
+        int trackID = IDE.trackID;
+        pandora::CartesianVector position(IDE.x, IDE.y, IDE.z);
+
+        if (idToIDEs.count(trackID) != 0) {
+          idToIDEs[trackID].push_back(position);
+        } else {
+          idToIDEs.insert({trackID, {position}});
+        }
+      }
+    }
+  }
+
+  std::cout << "Size of ID -> IDE Map : " << idToIDEs.size() << std::endl;
 
   for (unsigned int iMc = 0; iMc < mcParticles->size(); iMc++) {
 
@@ -274,7 +308,7 @@ bool test::mcShowerPandoraAna::processMCParticles(art::Event const& e) {
     fMCParticleEndMomentumZ[iMc]     = trueParticle.EndMomentum().Z();
     fMCParticleEndMomentumE[iMc]     = trueParticle.EndMomentum().E();
 
-    this->getMCShowerInformation(e, trueParticle, iMc);
+    this->getMCShowerInformation(e, idToIDEs, trueParticle, iMc);
   }
 
   return true;
